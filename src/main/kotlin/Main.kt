@@ -2,84 +2,62 @@ import com.marioreis.configuration.Configuration
 import com.marioreis.configuration.RetrofitConfig
 import com.marioreis.domain.dto.InsertCustomerRequestDTO
 import com.marioreis.domain.dto.InsertCustomerResponseDTO
+import com.marioreis.utils.FileUtils
 import kotlinx.coroutines.*
 import retrofit2.Call
 import retrofit2.Callback
 import retrofit2.Response
 import java.io.*
+import java.nio.file.FileSystems
 import java.nio.file.Files
+import java.nio.file.StandardCopyOption
+import kotlin.io.path.Path
 
 fun main() {
-    val customers = ArrayList<String>()
-    customers.add("69505713215;MARIO AUGUSTO REIS")
-    val insertCustomer = InsertCustomerRequestDTO()
-    insertCustomer.customers = customers
-    insertCustomer.fileName = "teste.txt"
+    FileUtils.generateFile()
+    FileUtils.splitFileByNumber(Configuration.BIG_FILE_NAME, 10)
+    val files = ArrayList<File>()
+    File(Configuration.TEMP_DIRECTORY).walkBottomUp().forEach {
 
-    var call = RetrofitConfig.getCustomerService().insertCustomers(insertCustomer)
-    call.enqueue(object : Callback<InsertCustomerResponseDTO> {
-        override fun onResponse(call: Call<InsertCustomerResponseDTO>, response: Response<InsertCustomerResponseDTO>) {
-            val body = response.body()
-            println(body?.fileName)
+        if (it.isFile){
+            files.add(it)
         }
-
-        override fun onFailure(call: Call<InsertCustomerResponseDTO>, t: Throwable) {
-            // tratar algum erro
-            println(t.message)
-        }
-    })
-
-}
-
-fun callService(){
-    val customers = ArrayList<String>()
-    customers.add("69505713215;MARIO AUGUSTO REIS")
-    val insertCustomer = InsertCustomerRequestDTO()
-    insertCustomer.customers = customers
-    insertCustomer.fileName = "teste.txt"
-
-    var call = RetrofitConfig.getCustomerService().insertCustomers(insertCustomer)
-    call.enqueue(object : Callback<InsertCustomerResponseDTO> {
-        override fun onResponse(call: Call<InsertCustomerResponseDTO>, response: Response<InsertCustomerResponseDTO>) {
-            val body = response.body()
-            println(body?.fileName)
-        }
-
-        override fun onFailure(call: Call<InsertCustomerResponseDTO>, t: Throwable) {
-            // tratar algum erro
-            println(t.message)
-        }
-    })
-}
-
-fun split(filePath: String, splitLen: Long) {
-    var leninfile: Long = 0
-    var leng: Long = 0
-    var count = 1
-    var data: Int
-    var filename = File(filePath)
-    val infile: InputStream = BufferedInputStream(FileInputStream(filename))
-    data = infile.read()
-    val outputFile = Configuration.TEMP_DIRECTORY
-    var name: String = filePath.substring(filePath.lastIndexOf("/") + 1)
-    name = name.substring(0, name.lastIndexOf("."))
-
-    while (data != -1) {
-        filename = File("$outputFile/$name$count.txt")
-        val outfile: OutputStream = BufferedOutputStream(FileOutputStream(filename))
-
-        while (data != -1 && leng < splitLen) {
-            outfile.write(data)
-            leng++
-            data = infile.read()
-        }
-
-        leninfile += leng
-        leng = 0
-        outfile.close()
-        count++
     }
 
+    runBlocking {
+        val result = coroutineScope {
+            files.map { f ->
+                async {
+                    insertCustomer(f.path, f.readLines())
+                }
+            }.awaitAll()
+        }
+    }
+}
+
+fun insertCustomer(completeFileName: String, lines: List<String>){
+    val customers = ArrayList<String>()
+    customers.addAll(lines)
+    val insertCustomer = InsertCustomerRequestDTO()
+    insertCustomer.customers = customers
+    insertCustomer.fileName = FileUtils.getFileNameFromPath(completeFileName)
+
+    var call = RetrofitConfig.getCustomerService().insertCustomers(insertCustomer)
+    call.enqueue(object : Callback<InsertCustomerResponseDTO> {
+        override fun onResponse(call: Call<InsertCustomerResponseDTO>, response: Response<InsertCustomerResponseDTO>) {
+
+            if (response.code() == 201){
+                val fileName = insertCustomer.fileName
+                val sentFileDirectory =Configuration.SENT_FILES_DIRECTORY
+                val sentFile = "${sentFileDirectory}${FileSystems.getDefault().getSeparator()}${fileName}"
+                Files.move(Path(completeFileName), Path(sentFile), StandardCopyOption.REPLACE_EXISTING)
+            }
+        }
+
+        override fun onFailure(call: Call<InsertCustomerResponseDTO>, t: Throwable) {
+            println(t.message)
+        }
+    })
 }
 
 @Throws(IOException::class)
