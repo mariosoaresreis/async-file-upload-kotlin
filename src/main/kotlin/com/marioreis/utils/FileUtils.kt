@@ -2,7 +2,11 @@ package com.marioreis.utils
 
 import com.marioreis.configuration.Configuration
 import java.io.*
+import java.nio.file.FileSystems
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import java.util.*
+import kotlin.io.path.Path
 
 
 object FileUtils {
@@ -43,7 +47,7 @@ object FileUtils {
                     count = 0;
                     val outputFile = Configuration.TEMP_DIRECTORY
                     var name: String = path.substring(path.lastIndexOf("/") + 1)
-                    name = name.substring(0, name.lastIndexOf("."))
+                    name = getFileNameWithoutExtension(name)
                     File("$outputFile/$name$numberOfFile.txt").writeText(builder.toString())
                     builder.clear()
                 }
@@ -61,36 +65,24 @@ object FileUtils {
         }
     }
 
-    fun split(filePath: String, splitLen: Long) {
-        var leninfile: Long = 0
-        var leng: Long = 0
-        var count = 1
-        var data: Int
-        var filename = File(filePath)
-        val infile: InputStream = BufferedInputStream(FileInputStream(filename))
-        data = infile.read()
-        val outputFile = Configuration.TEMP_DIRECTORY
-        var name: String = filePath.substring(filePath.lastIndexOf("/") + 1)
-        name = name.substring(0, name.lastIndexOf("."))
-
-        while (data != -1) {
-            filename = File("$outputFile/$name$count.txt")
-            val outfile: OutputStream = BufferedOutputStream(FileOutputStream(filename))
-
-            while (data != -1 && leng < splitLen) {
-                outfile.write(data)
-                leng++
-                data = infile.read()
-            }
-
-            leninfile += leng
-            leng = 0
-            outfile.close()
-            count++
-        }
-
+    fun getFileNameWithoutExtension(name: String): String{
+        return name.substring(0, name.lastIndexOf("."))
     }
     fun getFileNameFromPath(path: String): String {
-        return path.substring(path.lastIndexOf("/") + 1)
+        return path.substring(path.lastIndexOf(FileSystems.getDefault().getSeparator()) + 1)
+    }
+    private fun moveFile(source: String, dest: String){
+        Files.move(Path(source), Path(dest), StandardCopyOption.REPLACE_EXISTING)
+    }
+    private fun moveFileToDest(source: String, dest: String){
+        val fileName = getFileNameFromPath(source)
+        val sentFile = "$dest${FileSystems.getDefault().getSeparator()}${fileName}"
+        moveFile(source, sentFile)
+    }
+    fun moveFileToErrorFolder(source: String){
+        moveFileToDest(source, Configuration.ERROR_FILES_DIRECTORY)
+    }
+    fun moveFileToSentFolder(source: String){
+        moveFileToDest(source, Configuration.SENT_FILES_DIRECTORY)
     }
 }
