@@ -65,7 +65,7 @@ object FileUtils {
         }
     }
 
-    fun getFileNameWithoutExtension(name: String): String{
+    private fun getFileNameWithoutExtension(name: String): String{
         return name.substring(0, name.lastIndexOf("."))
     }
     fun getFileNameFromPath(path: String): String {
@@ -84,5 +84,16 @@ object FileUtils {
     }
     fun moveFileToSentFolder(source: String){
         moveFileToDest(source, Configuration.SENT_FILES_DIRECTORY)
+    }
+    private fun getErrorFileName(fileName: String): String{
+        val fileNameWithoutExt = getFileNameWithoutExtension(fileName)
+        val sufix = Configuration.FILE_ERROR_SUFIX
+        val extension = Configuration.FILE_EXTENSION
+        val path = Configuration.ERROR_FILES_DIRECTORY
+        val directorySeparator = FileSystems.getDefault().getSeparator()
+        return "${path}${directorySeparator}${fileNameWithoutExt}${sufix}${extension}"
+    }
+    fun createErrorFile(originalFileName: String, fileContent: String){
+        File(getErrorFileName(originalFileName)).writeText(fileContent)
     }
 }

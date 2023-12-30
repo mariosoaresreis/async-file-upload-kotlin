@@ -1,3 +1,4 @@
+import com.fasterxml.jackson.databind.ObjectMapper
 import com.marioreis.configuration.Configuration
 import com.marioreis.configuration.RetrofitConfig
 import com.marioreis.domain.dto.InsertCustomerRequestDTO
@@ -44,6 +45,7 @@ fun insertCustomer(completeFileName: String, lines: List<String>) {
     insertCustomer.customers = customers
     val fileName = FileUtils.getFileNameFromPath(completeFileName)
     insertCustomer.fileName = fileName
+    val mapper = ObjectMapper()
 
     var call = RetrofitConfig.getCustomerService().insertCustomers(insertCustomer)
     call.enqueue(object : Callback<InsertCustomerResponseDTO> {
@@ -53,6 +55,9 @@ fun insertCustomer(completeFileName: String, lines: List<String>) {
                 FileUtils.moveFileToSentFolder(fileName)
             } else {
                 FileUtils.moveFileToErrorFolder(fileName)
+                val insertCustomerResponse = response.body()
+                val errorFileContent = mapper.writeValueAsString(insertCustomerResponse)
+                FileUtils.createErrorFile(fileName, errorFileContent)
             }
         }
 
