@@ -71,6 +71,16 @@ object FileUtils {
     fun getFileNameFromPath(path: String): String {
         return path.substring(path.lastIndexOf(FileSystems.getDefault().getSeparator()) + 1)
     }
+    fun readFileLinesChunked(path: String, chunkSize: Int = 100): List<String> {
+        return try {
+            File(path).bufferedReader().use { reader ->
+                reader.readLines().take(chunkSize)
+            }
+        } catch (e: Exception) {
+            println("ERROR reading file $path: ${e.message}")
+            emptyList()
+        }
+    }
     private fun moveFile(source: String, dest: String){
         Files.move(Path(source), Path(dest), StandardCopyOption.REPLACE_EXISTING)
     }

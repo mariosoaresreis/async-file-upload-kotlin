@@ -1,15 +1,11 @@
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.marioreis.configuration.Configuration
 import com.marioreis.configuration.RetrofitConfig
+import com.marioreis.configuration.await
 import com.marioreis.domain.dto.InsertCustomerRequestDTO
-import com.marioreis.domain.dto.InsertCustomerResponseDTO
 import com.marioreis.utils.FileUtils
 import kotlinx.coroutines.*
-import retrofit2.Call
-import retrofit2.Callback
-import retrofit2.Response
-import java.io.*
-import java.nio.file.Files
+import java.io.File
 import kotlin.system.exitProcess
 
 fun main() {
@@ -19,50 +15,62 @@ fun main() {
     File(Configuration.TEMP_DIRECTORY).walkBottomUp()
         .onFail { file, ex -> println("ERROR: $file caused $ex") }
         .forEach {
-
             if (it.isFile) {
                 files.add(it)
             }
         }
 
     runBlocking {
-        val result = coroutineScope {
-            files.map { f ->
-                async {
-                    insertCustomer(f.path, f.readLines())
-                }
-            }.awaitAll()
+        try {
+            val results = coroutineScope {
+                files.map { f ->
+                    async {
+                        insertCustomer(f.path)
+                    }
+                }.awaitAll()
+            }
+            println("Processed ${results.count { it }} files successfully")
+        } catch (e: Exception) {
+            println("ERROR: ${e.message}")
+            e.printStackTrace()
         }
     }
 
     exitProcess(0)
 }
 
-fun insertCustomer(completeFileName: String, lines: List<String>) {
-    val customers = ArrayList<String>()
-    customers.addAll(lines)
-    val insertCustomer = InsertCustomerRequestDTO()
-    insertCustomer.customers = customers
-    val fileName = FileUtils.getFileNameFromPath(completeFileName)
-    insertCustomer.fileName = fileName
-    val mapper = ObjectMapper()
+suspend fun insertCustomer(completeFileName: String): Boolean = try {
+    // Read file lines asynchronously with buffered reader
+    val lines = FileUtils.readFileLinesChunked(completeFileName)
 
-    var call = RetrofitConfig.getCustomerService().insertCustomers(insertCustomer)
-    call.enqueue(object : Callback<InsertCustomerResponseDTO> {
-        override fun onResponse(call: Call<InsertCustomerResponseDTO>, response: Response<InsertCustomerResponseDTO>) {
-
-            if (response.code() == 201) {
-                FileUtils.moveFileToSentFolder(fileName)
-            } else {
-                FileUtils.moveFileToErrorFolder(fileName)
-                val insertCustomerResponse = response.body()
-                val errorFileContent = mapper.writeValueAsString(insertCustomerResponse)
-                FileUtils.createErrorFile(fileName, errorFileContent)
-            }
+    if (lines.isEmpty()) {
+        println("WARN: No lines read from $completeFileName")
+        false
+    } else {
+        val fileName = FileUtils.getFileNameFromPath(completeFileName)
+        val insertCustomerRequest = InsertCustomerRequestDTO().apply {
+            customers = ArrayList(lines)
+            this.fileName = fileName
         }
 
-        override fun onFailure(call: Call<InsertCustomerResponseDTO>, t: Throwable) {
-            println(t.message)
+        // Make the API call using suspend function
+        try {
+            RetrofitConfig.getCustomerService().insertCustomers(insertCustomerRequest).await()
+            // Handle successful response
+            println("SUCCESS: Inserted customers from $fileName")
+            FileUtils.moveFileToSentFolder(completeFileName)
+            true
+        } catch (e: Exception) {
+            println("ERROR: Failed to insert customers from $fileName: ${e.message}")
+            FileUtils.moveFileToErrorFolder(completeFileName)
+            val mapper = ObjectMapper()
+            val errorContent = mapper.writeValueAsString(mapOf("error" to e.message))
+            FileUtils.createErrorFile(fileName, errorContent)
+            false
         }
-    })
+    }
+} catch (e: Exception) {
+    println("ERROR: Exception processing $completeFileName: ${e.message}")
+    e.printStackTrace()
+    false
 }
